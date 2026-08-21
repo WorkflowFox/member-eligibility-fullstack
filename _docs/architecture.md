@@ -1,8 +1,8 @@
 # WorkflowFox Showcase 3 — Technical Architecture
 
 **Document:** Technical Architecture
-**Version:** 0.1
-**Status:** Draft for approval
+**Version:** 0.2
+**Status:** Approved
 **Derived from:** [plan.md](./plan.md) v0.1
 
 ## 1. Purpose
@@ -18,8 +18,8 @@ Define the technical architecture for the Member Eligibility showcase described 
 | Frontend | Next.js + React + TypeScript |
 | Backend | Python + FastAPI |
 | API style | REST, OpenAPI-documented (FastAPI native) |
-| Database (initial) | SQLite, seeded with synthetic data, bundled in the backend image |
-| Database (pre-release target) | PostgreSQL (Cloud SQL) |
+| Database (MVP) | SQLite, seeded with synthetic data, bundled immutably in the backend image |
+| Database (future production evolution) | PostgreSQL (Cloud SQL) — only if persistent transactional data, larger datasets, or multi-user write workloads are introduced |
 | Containerization | Docker (one image per service) |
 | CI/CD | GitHub Actions |
 | Hosting | Google Cloud Run (two services) |
@@ -39,7 +39,7 @@ flowchart LR
         API[api service<br/>FastAPI]
     end
 
-    DB[(SQLite file, bundled in image<br/>→ Cloud SQL Postgres later)]
+    DB[(SQLite file, bundled read-only in image<br/>— PostgreSQL is a future option, not MVP)]
 
     UI -->|HTTPS| WEB
     UI -->|HTTPS REST, CORS| API
@@ -65,14 +65,15 @@ The browser calls the FastAPI service directly for the eligibility check (simple
 
 - FastAPI, single router exposing the eligibility endpoint (see §5).
 - Pydantic models for request validation (non-empty member ID, valid ISO date) — satisfies plan.md's input-validation requirement at the framework level.
-- SQLAlchemy as the data-access layer, specifically so the SQLite → PostgreSQL swap (§4.3) is a configuration change (connection string / engine), not a rewrite.
+- SQLAlchemy as the data-access layer, specifically so a future SQLite → PostgreSQL migration (§4.3), if ever undertaken, would be a configuration change (connection string / engine), not a rewrite.
 - OpenAPI schema generated automatically by FastAPI; this is the system's API contract of record.
 
 ### 4.3 Data
 
-- **Initial:** SQLite file, seeded with synthetic members/plans/coverage at build time and bundled into the `api` container image. This is sufficient because plan.md states the showcase is read-only with synthetic data only — there is no write path and nothing that needs to persist across deployments.
-- **Pre-release target:** PostgreSQL via Cloud SQL, same schema, same SQLAlchemy models. Migration is a config/deploy change (connection string, Cloud SQL instance, seed script run once) rather than an application redesign.
-- No ORM migrations tooling (e.g. Alembic) is introduced unless/until the Postgres cutover actually happens — SQLite schema is created fresh from the same models on each image build.
+- **MVP database: SQLite.** The database is a file seeded with synthetic members/plans/coverage at build time and bundled into the `api` container image. At runtime it is treated as immutable/read-only — it exists solely to serve seeded synthetic showcase data. This fully satisfies plan.md's requirements, since the showcase is read-only with synthetic data only: there is no write path, no need for data to persist across deployments, and no production business logic depends on the Cloud Run container filesystem (which is itself ephemeral and unsuitable for durable writes).
+- **Future production evolution: PostgreSQL via Cloud SQL.** This is not an MVP requirement. It becomes the natural choice if the application later needs persistent transactional data, larger datasets, or multi-user write workloads — none of which are in scope for Showcase 3 per plan.md. If that evolution happens, it uses the same schema and the same SQLAlchemy models; migration is a configuration/deploy change (connection string, Cloud SQL instance, one-time seed/migration run) rather than an application redesign.
+- **SQLAlchemy as the data-access abstraction** is preserved specifically so this future SQLite → PostgreSQL migration would not require rewriting the eligibility business logic or the API layer — only the engine configuration changes.
+- No ORM migrations tooling (e.g. Alembic) is introduced for the MVP — the SQLite schema is created fresh from the same models on each image build. Migration tooling would only be introduced alongside an eventual Postgres cutover.
 
 Proposed schema (minimal, matches plan.md's single coverage segment per member):
 
@@ -150,6 +151,7 @@ No separate staging environment is introduced — out of scope per plan.md's emp
 - Both public (`allUsers` invoker) — no auth, per plan.md §9 "Production identity management ... out of scope."
 - Both configured to scale to zero — idle cost is effectively $0, matching the "low operating cost" objective.
 - `api` service CORS-restricted to the `web` service's origin.
+- The `api` service has no external database dependency for the MVP — its SQLite data ships inside the container image, so deployment requires no Cloud SQL instance, connection setup, or network configuration. A Cloud SQL (PostgreSQL) instance would only be added if/when the future production evolution described in §4.3 is undertaken.
 - Region: single region, closest to the primary demo audience (to be confirmed — not yet decided, see §11).
 
 ## 9. Explicitly Out of Scope
@@ -178,7 +180,7 @@ Directly traceable to plan.md §12 acceptance scenarios:
 Not yet decided — to be resolved during implementation planning, not blocking this architecture:
 
 - Exact Cloud Run region.
-- Whether the Postgres cutover happens before or after the first public demo.
+- Whether/when a PostgreSQL cutover is undertaken — not required for Showcase 3; only relevant if a later production evolution introduces persistent transactional data, larger datasets, or multi-user write workloads (see §4.3).
 - Synthetic data volume/variety (how many members, how many of each eligibility outcome) — a product/demo-content decision, not architectural.
 - Whether `apps/web` and `apps/api` live in one repo (current) as a monorepo with shared CI, vs. split repos — current assumption is monorepo, matches this repository's existing structure.
 
