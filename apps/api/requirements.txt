@@ -1,3 +1,4 @@
 # Runtime dependencies for the api service, added incrementally as later tasks need them.
 fastapi
 uvicorn
+sqlalchemy>=2.0,<3
