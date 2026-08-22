@@ -6,9 +6,11 @@ This module holds the single FastAPI app instance. Run locally with:
 """
 
 import datetime
+import os
 from typing import Annotated, Generator, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -18,6 +20,26 @@ from eligibility import check_eligibility
 from lookup import get_member_coverage
 
 app = FastAPI(title="Member Eligibility API")
+
+DEFAULT_ALLOWED_ORIGINS = ["http://localhost:3000"]
+
+
+def _get_allowed_origins() -> list[str]:
+    """Read allowed CORS origins from `ALLOWED_ORIGINS` (comma-separated).
+
+    Defaults to `http://localhost:3000` -- matching the `web` service's
+    host-published port in #15's docker-compose setup -- if the env var is
+    unset or blank, so local dev works out of the box without any code or
+    compose change. Per #21.
+    """
+    raw = os.environ.get("ALLOWED_ORIGINS")
+    if not raw:
+        return DEFAULT_ALLOWED_ORIGINS
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or DEFAULT_ALLOWED_ORIGINS
+
+
+app.add_middleware(CORSMiddleware, allow_origins=_get_allowed_origins())
 
 _engine = make_engine(DEFAULT_DB_PATH)
 _session_factory = make_session_factory(_engine)
