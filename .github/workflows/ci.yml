@@ -1,0 +1,89 @@
+name: CI
+
+# Catch lint, type, test, and build failures automatically on every pull
+# request, per issue #16. Each acceptance-criterion check runs as its own
+# job so a single failure blocks merge (with branch protection configured)
+# without hiding the others.
+#
+# Note: the issue also calls for a `next lint` job. That command does not
+# exist in the installed Next.js version (16.3.2 removed the `next lint`
+# CLI command) and no ESLint dependency/config exists in apps/web, so it
+# is intentionally omitted here -- see the comment on issue #16.
+#
+# apps/api lint/type-checking is out of scope for this workflow -- see #20.
+# This workflow never pushes or deploys an image -- see #18.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  api-test:
+    name: apps/api pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: Run pytest
+        working-directory: apps/api
+        run: pytest
+
+  web-test:
+    name: apps/web npm test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm install
+      - name: Run tests
+        working-directory: apps/web
+        run: npm test
+
+  web-typecheck:
+    name: apps/web tsc --noEmit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm install
+      - name: Type-check
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+  api-docker-build:
+    name: docker build apps/api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build apps/api image
+        run: docker build apps/api
+
+  web-docker-build:
+    name: docker build apps/web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build apps/web image
+        # Placeholder value: CI only verifies the image builds, it doesn't
+        # need a real deployed api URL (see #14).
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+            apps/web
