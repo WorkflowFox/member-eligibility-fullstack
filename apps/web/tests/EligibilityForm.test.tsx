@@ -222,7 +222,7 @@ describe("EligibilityForm", () => {
     expect(dateInput.value).toBe(getTodayIsoDate());
   });
 
-  it("does not render a result panel or crash for a MEMBER_NOT_FOUND result", async () => {
+  it("renders the not-found message, not the success panel, for a MEMBER_NOT_FOUND result", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       jsonResponse(200, {
         memberId: "M99999",
@@ -249,7 +249,158 @@ describe("EligibilityForm", () => {
     });
 
     expect(
+      screen.getByText(
+        "We couldn't find a member with that ID. Double-check the member ID and try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Eligibility result")).toBeNull();
+    expect(
       screen.queryByRole("button", { name: "Start another inquiry" }),
     ).toBeNull();
+  });
+
+  it("renders the backend's validation detail text for a 422 validationError result", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(422, {
+        detail: [
+          {
+            type: "string_too_short",
+            loc: ["query", "memberId"],
+            msg: "String should have at least 1 character",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "x" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("String should have at least 1 character"),
+      ).toBeTruthy();
+    });
+
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("422")).toBeNull();
+  });
+
+  it("falls back to a generic message for a 422 result with no usable detail text", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(422, { detail: null }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "x" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Please check the member ID and date and try again.",
+        ),
+      ).toBeTruthy();
+    });
+  });
+
+  it('renders the generic unavailable message and a "Retry" action for a 500 result', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(500, {
+        detail: "An unexpected error occurred. Please try again.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "The service is temporarily unavailable. Please try again.",
+        ),
+      ).toBeTruthy();
+    });
+
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(
+      screen.queryByText("An unexpected error occurred. Please try again."),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Retry" }),
+    ).toBeTruthy();
+  });
+
+  it('"Retry" re-triggers the API call with the same member ID and date as the original submission', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(500, {
+          detail: "An unexpected error occurred. Please try again.",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          memberId: "M12345",
+          memberName: "Jane Doe",
+          planName: "Gold Plan",
+          coverageEffectiveDate: "2024-01-01",
+          coverageTerminationDate: null,
+          checkCoverageOnDate: "2026-08-22",
+          eligibilityStatus: "ELIGIBLE",
+          eligibilityReason: "Coverage is active on 2026-08-22.",
+        }),
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.change(screen.getByLabelText("Check Coverage On"), {
+      target: { value: "2026-08-22" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    // Edit the field after the failed submission -- Retry should still use
+    // the originally-submitted member ID, not this new, unsubmitted value.
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M99999-not-submitted" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const firstUrl = mockFetch.mock.calls[0][0] as string;
+    const secondUrl = mockFetch.mock.calls[1][0] as string;
+    expect(secondUrl).toBe(firstUrl);
+    expect(secondUrl).toBe(
+      `${API_URL}/api/v1/eligibility?memberId=M12345&checkDate=2026-08-22`,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Jane Doe")).toBeTruthy();
+    });
   });
 });
