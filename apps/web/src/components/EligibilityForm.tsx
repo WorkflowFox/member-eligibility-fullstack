@@ -2,6 +2,11 @@
 
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
+import {
+  getEligibility,
+  type EligibilityResult,
+} from "../lib/eligibilityApi";
+
 /**
  * Today's date in the browser's local timezone, formatted as the ISO
  * YYYY-MM-DD date the API's `checkDate` param expects
@@ -15,18 +20,10 @@ export function getTodayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
-/**
- * Stubbed submit handler. #11 will replace this with a real call to the
- * eligibility API; for now it intentionally does nothing with the values.
- */
-function submitEligibilityInquiry(memberId: string, checkDate: string): void {
-  void memberId;
-  void checkDate;
-}
-
 export default function EligibilityForm() {
   const [memberId, setMemberId] = useState("");
   const [checkDate, setCheckDate] = useState(getTodayIsoDate);
+  const [result, setResult] = useState<EligibilityResult | null>(null);
 
   const isSubmitDisabled = memberId.trim().length === 0;
 
@@ -38,9 +35,10 @@ export default function EligibilityForm() {
     setCheckDate(event.target.value);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    submitEligibilityInquiry(memberId, checkDate);
+    const outcome = await getEligibility(memberId, checkDate);
+    setResult(outcome);
   }
 
   return (
