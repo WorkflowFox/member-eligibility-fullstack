@@ -9,9 +9,16 @@ from seed import RESERVED_NOT_FOUND_MEMBER_ID, seed
 TODAY = datetime.date.today()
 
 
-def _client_with_seeded_db(tmp_path):
+def _client_with_seeded_db(tmp_path, raise_server_exceptions: bool = True):
     """Build a TestClient whose `get_session` dependency points at a
-    freshly-seeded temporary database, per #3's seed data."""
+    freshly-seeded temporary database, per #3's seed data.
+
+    `raise_server_exceptions=False` is used for the 500 test below: an app
+    with a registered `Exception` handler still sends the handler's response
+    to real clients, but Starlette's `ServerErrorMiddleware` always re-raises
+    afterwards too, so the TestClient can surface it in the test unless told
+    not to -- see starlette's `ServerErrorMiddleware.__call__`.
+    """
     db_path = tmp_path / "eligibility.db"
     seed(db_path=db_path)
 
@@ -26,7 +33,7 @@ def _client_with_seeded_db(tmp_path):
             session.close()
 
     app.dependency_overrides[get_session] = override_get_session
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=raise_server_exceptions)
     return client
 
 
@@ -137,6 +144,94 @@ def test_member_not_found_returns_200_not_404(tmp_path):
         "eligibilityStatus": "MEMBER_NOT_FOUND",
         "eligibilityReason": f"No member found with ID {RESERVED_NOT_FOUND_MEMBER_ID}.",
     }
+
+
+def test_blank_member_id_returns_422(tmp_path):
+    client = _client_with_seeded_db(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/eligibility",
+            params={"memberId": "", "checkDate": TODAY.isoformat()},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 422
+    body = response.json()
+    # FastAPI/Pydantic's default validation-error shape.
+    assert "detail" in body
+    assert isinstance(body["detail"], list)
+    assert len(body["detail"]) >= 1
+
+
+def test_missing_member_id_returns_422(tmp_path):
+    client = _client_with_seeded_db(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/eligibility",
+            params={"checkDate": TODAY.isoformat()},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 422
+    assert "detail" in response.json()
+
+
+def test_malformed_check_date_returns_422(tmp_path):
+    client = _client_with_seeded_db(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/eligibility",
+            params={"memberId": "M-1001", "checkDate": "not-a-date"},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 422
+    assert "detail" in response.json()
+
+
+def test_missing_check_date_returns_422(tmp_path):
+    client = _client_with_seeded_db(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/eligibility",
+            params={"memberId": "M-1001"},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 422
+    assert "detail" in response.json()
+
+
+def test_unexpected_lookup_failure_returns_generic_500(tmp_path, monkeypatch):
+    """Simulates an unexpected failure by monkeypatching the #5 lookup
+    (`get_member_coverage`, as imported into `main`) to raise. The response
+    must be a generic 500 -- never the real exception text."""
+    client = _client_with_seeded_db(tmp_path, raise_server_exceptions=False)
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("boom: secret internal detail, e.g. a SQL string")
+
+    monkeypatch.setattr("main.get_member_coverage", _raise)
+
+    try:
+        response = client.get(
+            "/api/v1/eligibility",
+            params={"memberId": "M-1001", "checkDate": TODAY.isoformat()},
+        )
+    finally:
+        _clear_overrides()
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": "An unexpected error occurred. Please try again."
+    }
+    assert "boom" not in response.text
+    assert "RuntimeError" not in response.text
+    assert "Traceback" not in response.text
 
 
 def test_eligibility_route_is_on_the_single_app_instance(tmp_path):

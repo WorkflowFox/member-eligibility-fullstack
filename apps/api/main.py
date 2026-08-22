@@ -6,10 +6,11 @@ This module holds the single FastAPI app instance. Run locally with:
 """
 
 import datetime
-from typing import Generator, Literal
+from typing import Annotated, Generator, Literal
 
-from fastapi import Depends, FastAPI
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Query, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from db import DEFAULT_DB_PATH, make_engine, make_session_factory
@@ -62,10 +63,23 @@ class EligibilityResponse(BaseModel):
     eligibilityReason: str
 
 
+class EligibilityQueryParams(BaseModel):
+    """Query parameters for `GET /api/v1/eligibility`.
+
+    Declared as a Pydantic model -- rather than manual `if` checks in the
+    route handler -- so FastAPI's native query validation rejects bad
+    input before the handler ever runs. A missing/blank `memberId` or a
+    missing/malformed `checkDate` (not a valid ISO `YYYY-MM-DD` date) both
+    produce a `422` with FastAPI/Pydantic's default `detail` shape. Per #7.
+    """
+
+    memberId: str = Field(min_length=1)
+    checkDate: datetime.date
+
+
 @app.get("/api/v1/eligibility")
 def get_eligibility(
-    memberId: str,
-    checkDate: datetime.date,
+    params: Annotated[EligibilityQueryParams, Query()],
     session: Session = Depends(get_session),
 ) -> EligibilityResponse:
     """Look up a member's coverage and decide eligibility on `checkDate`.
@@ -73,8 +87,14 @@ def get_eligibility(
     Wires together the lookup (#5) and the pure decision function (#4) --
     no eligibility logic is duplicated here. Every outcome, including a
     member that cannot be found, returns HTTP 200 (see #6 acceptance
-    criteria); validating malformed input is out of scope (see #7).
+    criteria). Malformed input is rejected with a 422 by
+    `EligibilityQueryParams` before this body runs, and any unexpected
+    failure below is turned into a generic 500 by the app-wide exception
+    handler (see #7).
     """
+    memberId = params.memberId
+    checkDate = params.checkDate
+
     coverage = get_member_coverage(session, memberId)
 
     if coverage is None:
@@ -108,4 +128,20 @@ def get_eligibility(
         checkCoverageOnDate=checkDate,
         eligibilityStatus=status,
         eligibilityReason=reasons[status],
+    )
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    """Turn any unhandled exception into a generic, non-technical 500.
+
+    No exception message, stack trace, or other internal detail is ever
+    included in the response body -- per #7 / `_docs/outdated/architecture.md`
+    §10 ("no internal details exposed"). The body shape is fixed per the
+    grooming decision on #7 so the frontend can key off one `detail` field
+    for every non-200 response.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred. Please try again."},
     )
