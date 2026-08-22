@@ -110,4 +110,146 @@ describe("EligibilityForm", () => {
       `${API_URL}/api/v1/eligibility?memberId=M12345&checkDate=2026-08-22`,
     );
   });
+
+  it("renders all result fields for a successful eligibility result", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        memberId: "M12345",
+        memberName: "Jane Doe",
+        planName: "Gold Plan",
+        coverageEffectiveDate: "2024-01-01",
+        coverageTerminationDate: "2026-12-31",
+        checkCoverageOnDate: "2026-08-22",
+        eligibilityStatus: "ELIGIBLE",
+        eligibilityReason: "Coverage is active on 2026-08-22.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jane Doe")).toBeTruthy();
+    });
+
+    expect(screen.getByText("M12345")).toBeTruthy();
+    expect(screen.getByText("Gold Plan")).toBeTruthy();
+    expect(screen.getByText("2024-01-01")).toBeTruthy();
+    expect(screen.getByText("2026-12-31")).toBeTruthy();
+    expect(screen.getByText("2026-08-22")).toBeTruthy();
+    expect(screen.getByText("Eligible")).toBeTruthy();
+    expect(
+      screen.getByText("Coverage is active on 2026-08-22."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Start another inquiry" }),
+    ).toBeTruthy();
+  });
+
+  it('shows an explicit "no termination date" indicator when coverageTerminationDate is null', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        memberId: "M12345",
+        memberName: "Jane Doe",
+        planName: "Gold Plan",
+        coverageEffectiveDate: "2024-01-01",
+        coverageTerminationDate: null,
+        checkCoverageOnDate: "2026-08-22",
+        eligibilityStatus: "ELIGIBLE",
+        eligibilityReason: "Coverage is active on 2026-08-22.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No termination date on file")).toBeTruthy();
+    });
+  });
+
+  it('clears the result and resets the form when "Start another inquiry" is activated', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        memberId: "M12345",
+        memberName: "Jane Doe",
+        planName: "Gold Plan",
+        coverageEffectiveDate: "2024-01-01",
+        coverageTerminationDate: null,
+        checkCoverageOnDate: "2026-08-22",
+        eligibilityStatus: "NOT_YET_ELIGIBLE",
+        eligibilityReason: "Coverage begins 2027-01-01.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    const memberIdInput = screen.getByLabelText(
+      "Member ID",
+    ) as HTMLInputElement;
+    const dateInput = screen.getByLabelText(
+      "Check Coverage On",
+    ) as HTMLInputElement;
+
+    fireEvent.change(memberIdInput, { target: { value: "M12345" } });
+    fireEvent.change(dateInput, { target: { value: "2026-08-22" } });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jane Doe")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start another inquiry" }),
+    );
+
+    expect(screen.queryByText("Jane Doe")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Start another inquiry" }),
+    ).toBeNull();
+    expect(memberIdInput.value).toBe("");
+    expect(dateInput.value).toBe(getTodayIsoDate());
+  });
+
+  it("does not render a result panel or crash for a MEMBER_NOT_FOUND result", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        memberId: "M99999",
+        memberName: null,
+        planName: null,
+        coverageEffectiveDate: null,
+        coverageTerminationDate: null,
+        checkCoverageOnDate: "2026-08-22",
+        eligibilityStatus: "MEMBER_NOT_FOUND",
+        eligibilityReason: "No member matches the submitted member ID.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M99999" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Start another inquiry" }),
+    ).toBeNull();
+  });
 });
