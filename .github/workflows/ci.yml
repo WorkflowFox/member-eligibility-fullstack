@@ -5,10 +5,10 @@ name: CI
 # job so a single failure blocks merge (with branch protection configured)
 # without hiding the others.
 #
-# Note: the issue also calls for a `next lint` job. That command does not
-# exist in the installed Next.js version (16.3.2 removed the `next lint`
-# CLI command) and no ESLint dependency/config exists in apps/web, so it
-# is intentionally omitted here -- see the comment on issue #16.
+# Note on `web-lint`: the Next.js version installed in apps/web (16.3.2)
+# removed the `next lint` CLI command, so this runs `npm run lint`
+# (`eslint .`) instead, using ESLint + eslint-config-next added for this
+# job -- see the follow-up comment on issue #16.
 #
 # apps/api lint/type-checking is out of scope for this workflow -- see #20.
 # This workflow never pushes or deploys an image -- see #18.
@@ -49,6 +49,23 @@ jobs:
       - name: Run tests
         working-directory: apps/web
         run: npm test
+
+  web-lint:
+    name: apps/web next lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm install
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint
 
   web-typecheck:
     name: apps/web tsc --noEmit
