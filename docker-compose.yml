@@ -1,0 +1,45 @@
+# Local development only (issue #15). Not referenced by CI (#16) or the
+# CD deploy path (#18) -- those build and push images independently.
+#
+# Brings up both services with one command:
+#
+#   docker compose up --build
+#
+# The browser (running outside Docker) talks to the api service
+# directly at its published host port, per the "browser calls the api
+# service directly" design in _docs/outdated/architecture.md §3. So
+# the api's port is published to the host, and the web image is built
+# with NEXT_PUBLIC_API_URL pointing at that same published host URL --
+# it has to be a build arg, not a runtime `environment:` entry, because
+# Next.js inlines NEXT_PUBLIC_* vars into the client bundle at build
+# time (see apps/web/Dockerfile, #14).
+#
+# The api's CORS default (ALLOWED_ORIGINS, #21) is
+# "http://localhost:3000", which already matches web's published host
+# port below -- so no ALLOWED_ORIGINS override is needed here. If the
+# web host port is ever changed, ALLOWED_ORIGINS must be set on the api
+# service to match.
+
+services:
+  api:
+    build:
+      context: ./apps/api
+    ports:
+      - "8000:8080"
+    networks:
+      - member-eligibility
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - member-eligibility
+
+networks:
+  member-eligibility:
