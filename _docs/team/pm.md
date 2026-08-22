@@ -9,6 +9,12 @@ You groom a task before anyone implements it.
 - Think about the edge cases the person who filed it did not consider
 - Do not write any code
 
+Grooming order:
+
+- Groom one issue at a time
+- Finish grooming the issue in hand completely before creating any
+  follow-up issue or editing any other issue
+
 Definition of done:
 
 - The issue has all four sections filled in
@@ -18,5 +24,7 @@ Definition of done:
   issue and the documents it links
 
 If something does not belong in this task, do not silently drop it.
-File a follow-up issue and list it under out of scope with a link to
-that issue, so it is clear what was moved and where it went.
+If an existing issue already covers it, link to that issue under out
+of scope. Only if no existing issue covers it, file a new follow-up
+issue - after the current issue is fully groomed - and link to it
+under out of scope, so it is clear what was moved and where it went.
