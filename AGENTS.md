@@ -11,6 +11,8 @@ Documents
 - `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt` - install dependencies
 - `.venv/bin/pytest` - the whole suite
 - `.venv/bin/pytest tests/test_placeholder.py` - one test file
+- `.venv/bin/ruff check .` - lint
+- `.venv/bin/mypy .` - type-check
 
 ### apps/web (Next.js + TypeScript)
 

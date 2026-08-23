@@ -58,11 +58,13 @@ def test_no_termination_date_before_effective_date_is_not_yet_eligible():
 
 
 def test_never_returns_member_not_found():
+    day_before_effective = EFFECTIVE - datetime.timedelta(days=1)
+    day_after_termination = TERMINATION + datetime.timedelta(days=1)
     possible_results = {
-        check_eligibility(EFFECTIVE, TERMINATION, EFFECTIVE - datetime.timedelta(days=1)),
+        check_eligibility(EFFECTIVE, TERMINATION, day_before_effective),
         check_eligibility(EFFECTIVE, TERMINATION, EFFECTIVE),
         check_eligibility(EFFECTIVE, TERMINATION, TERMINATION),
-        check_eligibility(EFFECTIVE, TERMINATION, TERMINATION + datetime.timedelta(days=1)),
+        check_eligibility(EFFECTIVE, TERMINATION, day_after_termination),
         check_eligibility(EFFECTIVE, None, EFFECTIVE),
     }
 

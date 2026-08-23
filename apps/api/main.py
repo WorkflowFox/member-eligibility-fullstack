@@ -7,7 +7,8 @@ This module holds the single FastAPI app instance. Run locally with:
 
 import datetime
 import os
-from typing import Annotated, Generator, Literal
+from collections.abc import Generator
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware

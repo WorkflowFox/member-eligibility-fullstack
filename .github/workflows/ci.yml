@@ -10,7 +10,6 @@ name: CI
 # (`eslint .`) instead, using ESLint + eslint-config-next added for this
 # job -- see the follow-up comment on issue #16.
 #
-# apps/api lint/type-checking is out of scope for this workflow -- see #20.
 # This workflow never pushes or deploys an image -- see #18.
 
 on:
@@ -32,6 +31,36 @@ jobs:
       - name: Run pytest
         working-directory: apps/api
         run: pytest
+
+  api-lint:
+    name: apps/api ruff check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        working-directory: apps/api
+        run: ruff check .
+
+  api-typecheck:
+    name: apps/api mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: Type-check
+        working-directory: apps/api
+        run: mypy .
 
   web-test:
     name: apps/web npm test

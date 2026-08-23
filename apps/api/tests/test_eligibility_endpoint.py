@@ -93,7 +93,8 @@ def test_not_yet_eligible_member_returns_200(tmp_path):
     effective_date = body["coverageEffectiveDate"]
     assert effective_date is not None
     assert body["eligibilityStatus"] == "NOT_YET_ELIGIBLE"
-    assert body["eligibilityReason"] == f"Coverage does not begin until {effective_date}."
+    expected_reason = f"Coverage does not begin until {effective_date}."
+    assert body["eligibilityReason"] == expected_reason
 
 
 def test_ineligible_member_returns_200(tmp_path):

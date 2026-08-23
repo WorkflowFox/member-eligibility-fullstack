@@ -1,0 +1,42 @@
+# Lint (ruff) and type-check (mypy) configuration for apps/api. Added per
+# issue #20, matching the coverage apps/web already gets from `next lint`
+# and `tsc --noEmit` (#16).
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# A project-appropriate rule set: pyflakes + pycodestyle (the ruff
+# defaults), plus import sorting, pyupgrade, and bugbear -- enough to
+# catch real bugs and keep imports/style consistent without being so
+# strict (e.g. full "ALL") that it fights the codebase's existing style.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade (modern syntax)
+    "B",   # flake8-bugbear (common bug patterns)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency-injection pattern is `param: T = Depends(...)` --
+# calling `Depends()` in the argument default is the documented, idiomatic
+# usage, not the mutable-default-argument bug B008 exists to catch.
+"main.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["."]
+# Tests are excluded per the issue's acceptance criteria ("tests may be
+# excluded or checked more leniently") -- untyped test functions (pytest
+# fixtures, etc.) are common and not worth type-checking strictly.
+exclude = ["^tests/"]
+
+# Checked strictly: catch missing annotations and unsound code in the
+# application source.
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
