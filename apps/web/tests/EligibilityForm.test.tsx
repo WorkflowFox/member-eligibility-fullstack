@@ -404,3 +404,89 @@ describe("EligibilityForm", () => {
     });
   });
 });
+
+describe("EligibilityForm accessibility (issue #19)", () => {
+  it("gives the member ID and check date inputs a programmatically associated label", () => {
+    render(<EligibilityForm />);
+
+    // getByLabelText only matches inputs whose <label> is associated via
+    // htmlFor/id (or wrapping) -- this fails if the association is missing.
+    expect(
+      (screen.getByLabelText("Member ID") as HTMLInputElement).tagName,
+    ).toBe("INPUT");
+    expect(
+      (screen.getByLabelText("Check Coverage On") as HTMLInputElement)
+        .tagName,
+    ).toBe("INPUT");
+  });
+
+  it("renders a persistent aria-live=\"polite\" region wrapping the result/error area before any submit", () => {
+    const { container } = render(<EligibilityForm />);
+
+    const liveRegion = container.querySelector('[aria-live]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion?.getAttribute("aria-live")).toBe("polite");
+    // Empty until a result/error arrives.
+    expect(liveRegion?.textContent).toBe("");
+  });
+
+  it("announces a success result inside the aria-live region", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        memberId: "M12345",
+        memberName: "Jane Doe",
+        planName: "Gold Plan",
+        coverageEffectiveDate: "2024-01-01",
+        coverageTerminationDate: "2026-12-31",
+        checkCoverageOnDate: "2026-08-22",
+        eligibilityStatus: "ELIGIBLE",
+        eligibilityReason: "Coverage is active on 2026-08-22.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { container } = render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jane Doe")).toBeTruthy();
+    });
+
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion?.textContent).toContain("Jane Doe");
+  });
+
+  it("announces the MEMBER_NOT_FOUND, validation error, and unavailable panels inside the aria-live region", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      jsonResponse(500, {
+        detail: "An unexpected error occurred. Please try again.",
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { container } = render(<EligibilityForm />);
+
+    fireEvent.change(screen.getByLabelText("Member ID"), {
+      target: { value: "M12345" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check Eligibility" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "The service is temporarily unavailable. Please try again.",
+        ),
+      ).toBeTruthy();
+    });
+
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion?.textContent).toContain(
+      "The service is temporarily unavailable.",
+    );
+  });
+});

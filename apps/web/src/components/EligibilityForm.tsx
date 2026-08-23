@@ -253,23 +253,34 @@ export default function EligibilityForm() {
           Check Eligibility
         </button>
       </form>
-      {result?.type === "success" &&
-        result.data.eligibilityStatus !== "MEMBER_NOT_FOUND" && (
-          <EligibilitySuccessPanel
-            data={result.data}
-            onStartAnotherInquiry={handleStartAnotherInquiry}
-          />
+      {/*
+        Always present in the DOM (not conditionally rendered) so assistive
+        technology has already registered it as a live region before its
+        contents change -- an aria-live region added at the same time as
+        the content it announces is not reliably announced. When a result
+        or error appears here after submit, it's announced to screen
+        readers instead of relying on the user noticing a visual change,
+        per issue #19.
+      */}
+      <div aria-live="polite" aria-atomic="true">
+        {result?.type === "success" &&
+          result.data.eligibilityStatus !== "MEMBER_NOT_FOUND" && (
+            <EligibilitySuccessPanel
+              data={result.data}
+              onStartAnotherInquiry={handleStartAnotherInquiry}
+            />
+          )}
+        {result?.type === "success" &&
+          result.data.eligibilityStatus === "MEMBER_NOT_FOUND" && (
+            <MemberNotFoundPanel />
+          )}
+        {result?.type === "validationError" && (
+          <ValidationErrorPanel detail={result.detail} />
         )}
-      {result?.type === "success" &&
-        result.data.eligibilityStatus === "MEMBER_NOT_FOUND" && (
-          <MemberNotFoundPanel />
+        {result?.type === "unavailable" && (
+          <UnavailablePanel onRetry={handleRetry} />
         )}
-      {result?.type === "validationError" && (
-        <ValidationErrorPanel detail={result.detail} />
-      )}
-      {result?.type === "unavailable" && (
-        <UnavailablePanel onRetry={handleRetry} />
-      )}
+      </div>
     </>
   );
 }
